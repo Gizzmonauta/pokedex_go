@@ -4,32 +4,32 @@ import (
 	"bufio"
 	"fmt"
 	"os"
-	"net/http"
-	"encoding/json"
+	"time"
+
 	"github.com/Gizzmonauta/pokedex_go/internal/pokeapi"
 )
 
 type cliCommand struct {
-	name 		string
+	name        string
 	description string
-	callback	func(*config) error
+	callback    func(*config) error
 }
 
 var registry map[string]cliCommand
 
 type config struct {
-    pokeapiClient    pokeapi.Client
-    nextLocationsURL *string
-    prevLocationsURL *string
+	pokeapiClient    pokeapi.Client
+	nextLocationsURL *string
+	prevLocationsURL *string
 }
 
-func commandExit() error {
+func commandExit(cfg *config) error {
 	fmt.Println("Closing the Pokedex... Goodbye!")
 	os.Exit(0)
 	return nil
 }
 
-func commandHelp() error {
+func commandHelp(cfg *config) error {
 	fmt.Printf("Welcome to the Pokedex!\nUsage:\n\n")
 	for _, comm := range registry {
 		fmt.Printf("%s: %s\n", comm.name, comm.description)
@@ -37,33 +37,40 @@ func commandHelp() error {
 	return nil
 }
 
-func commandMap() error {
-	fullURL := "https://pokeapi.co/api/v2/location-area/"
+func commandMap(cfg *config) error {
+	// Create a new request using http.NewRequest
+	req, err := cfg.pokeapiClient.ListLocations(cfg.nextLocationsURL)
+	if err != nil {
+		return err
+	}
+
+	cfg.nextLocationsURL = req.Next
+	cfg.prevLocationsURL = req.Previous
+
+	for _, area := range req.Results {
+		fmt.Printf("- %s\n", area.Name)
+	}
+
+	return nil
+
+}
+
+func commandMapb(cfg *config) error {
+	if cfg.prevLocationsURL == nil {
+		fmt.Println("you're on the first page")
+		return nil
+	}
 
 	// Create a new request using http.NewRequest
-	req, err := http.NewRequest("GET", fullURL, nil)
+	req, err := cfg.pokeapiClient.ListLocations(cfg.prevLocationsURL)
 	if err != nil {
 		return err
 	}
 
-	// Make the request using the http.Client's Do method.
-	client := &http.Client{}
-	res, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer res.Body.Close()
+	cfg.nextLocationsURL = req.Next
+	cfg.prevLocationsURL = req.Previous
 
-	// Decode and return the response's JSON body (which is also a User)
-	var la cliLocationArea
-	decoder := json.NewDecoder(res.Body)
-	err = decoder.Decode(&la)
-	if err != nil {
-		return err
-	}
-
-	locationAreas := la.Results
-	for _, area := range locationAreas {
+	for _, area := range req.Results {
 		fmt.Printf("- %s\n", area.Name)
 	}
 
@@ -72,34 +79,42 @@ func commandMap() error {
 }
 
 func main() {
+	cfg := &config{
+		pokeapiClient: pokeapi.NewClient(5 * time.Second),
+	}
+
 	registry = map[string]cliCommand{
 		"exit": {
-			name: 		 "exit",
+			name:        "exit",
 			description: "Exit the Pokedex",
-			callback: 	 commandExit,
+			callback:    commandExit,
 		},
 		"help": {
-			name: 		 "help",
+			name:        "help",
 			description: "Displays a help message",
-			callback: 	 commandHelp,
+			callback:    commandHelp,
 		},
 		"map": {
-			name: 		 "map",
-			description: "Displays the map",
-			callback: 	 commandMap,
+			name:        "map",
+			description: "Displays the next 20 locations",
+			callback:    commandMap,
+		},
+		"mapb": {
+			name:        "mapb",
+			description: "Displays the previous 20 locations",
+			callback:    commandMapb,
 		},
 	}
 
-
 	scanner := bufio.NewScanner(os.Stdin)
-	for ;; {
+	for {
 		fmt.Printf("Pokemon> ")
 		scanner.Scan()
 		input := scanner.Text()
 		words := cleanInput(input)
 
 		if comm, ok := registry[words[0]]; ok {
-			err := comm.callback()
+			err := comm.callback(cfg)
 			if err != nil {
 				fmt.Println("Error:", err)
 			}
@@ -108,4 +123,3 @@ func main() {
 		}
 	}
 }
-
