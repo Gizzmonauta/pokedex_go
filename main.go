@@ -6,24 +6,21 @@ import (
 	"os"
 	"net/http"
 	"encoding/json"
+	"github.com/Gizzmonauta/pokedex_go/internal/pokeapi"
 )
 
 type cliCommand struct {
 	name 		string
 	description string
-	callback	func() error
+	callback	func(*config) error
 }
 
 var registry map[string]cliCommand
 
-type cliLocationArea struct{
-	Count int
-	Next  string
-	Previous string
-	Results []struct{
-		Name string
-		Url  string
-	}
+type config struct {
+    pokeapiClient    pokeapi.Client
+    nextLocationsURL *string
+    prevLocationsURL *string
 }
 
 func commandExit() error {
